@@ -4,13 +4,19 @@ from scipy.spatial import distance as dis
 import threading
 import pyttsx3
 import datetime
+import base64
+import requests
+import json
+import time
 
 COLOR_WHITE = (255,255,255)
-ID_DEVICE = '0001'
+ID_DEVICE = '001'
 
 frame_count = 0
 min_frame = 6
 min_tolerance = 5.0
+last_capture_time = 0
+capture_interval = 10  # Intervalo de 10 segundos
 
 face_mesh = mp.solutions.face_mesh
 draw_utils = mp.solutions.drawing_utils
@@ -49,7 +55,7 @@ def run_speech(speech, speech_message):
     
 
 def draw_landmarks(image, outputs, land_mark, color):
-    height, width =image.shape[:2]
+    height, width = image.shape[:2]
              
     for face in land_mark:
         # Itera sobre os pontos de referência do rosto
@@ -92,7 +98,26 @@ def get_aspect_ratio(image, outputs, top_bottom, left_right):
     aspect_ratio = left_right_dis/ top_bottom_dis
     
     return aspect_ratio
+
+def post_image(id_device, image_path):
+    with open(image_path, "rb") as image_file:
+        # Converte a imagem para base64
+        encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+
+    data = {
+        "idDevice": id_device,
+        "image": encoded_string,
+        "type": "SLEEPING",
+        "occurrenceDate": datetime.datetime.now().isoformat()
+    }
+
+    url = "https://drivewatchbackend-production.up.railway.app/api/v1/register"
+    headers = {'Content-Type': 'application/json'}
+    response = requests.post(url, data=json.dumps(data), headers=headers)
     
+    print(f"Status Code: {response.status_code}")
+    print(f"Response: {response.json()}")
+
 
 # Inicializa o modelo de detecção de rosto
 face_model = face_mesh.FaceMesh(static_image_mode = False,
@@ -103,11 +128,9 @@ face_model = face_mesh.FaceMesh(static_image_mode = False,
 # Inicializa a captura de vídeo
 capture = cv.VideoCapture(0)
 
-
 # Inicializa o mecanismo de fala
 speech = pyttsx3.init()
 
-#loop()
 while True:
     # Captura um frame do vídeo
     result, image = capture.read()
@@ -141,35 +164,37 @@ while True:
             else:
                 frame_count = 0
                 
-            if frame_count > min_frame:
+            current_time = time.time()
+            if frame_count > min_frame and (current_time - last_capture_time) > capture_interval:
                 # Olhos fechados
-                message = 'Você está dormindo, pare o veículo'
-                # TODO: ?apito forte no buzzer?, tirar foto e enviar para a AWS com o horario e id
-                cv.imwrite(f'{ID_DEVICE}_{datetime.datetime.now().strftime("%d-%m-%Y_%H-%M-%S")}.jpg', clean_image)
-                t = threading.Thread(target=run_speech, args=(speech, message)) # create new instance if thread is dead
-                t.start()
-
+                message = 'You are sleeping, stop the vehicle'
+                # Salva a imagem capturada
+                image_path = f'{ID_DEVICE}_{datetime.datetime.now().strftime("%d-%m-%Y_%H-%M-%S")}.jpg'
+                cv.imwrite(image_path, clean_image)
                 
+                # Atualiza o tempo da última captura
+                last_capture_time = current_time
+
+                # Cria uma nova thread para enviar a imagem
+                threading.Thread(target=post_image, args=(ID_DEVICE, image_path)).start()
+                # Cria uma nova thread para reproduzir a mensagem de aviso
+                threading.Thread(target=run_speech, args=(speech, message)).start()
+
             # Desenha os pontos de referência dos labios
             draw_landmarks(image, outputs, UPPER_LOWER_LIPS , COLOR_WHITE)
             draw_landmarks(image, outputs, LEFT_RIGHT_LIPS, COLOR_WHITE)
             
-            # Calcula a se a boca está aberta
+            # Calcula se a boca está aberta
             ratio_lips =  get_aspect_ratio(image, outputs, UPPER_LOWER_LIPS, LEFT_RIGHT_LIPS)
 
             if ratio_lips < 1.8:
                 # Boca aberta
-                message = 'Você parece cansado, faça uma pausa para descansar'
-                # TODO: ?apito suave no buzzer?
-                p = threading.Thread(target=run_speech, args=(speech, message)) # create new instance if thread is dead
-                p.start()
-           
-            
+                message = 'You look tired, take a break to rest'
+                threading.Thread(target=run_speech, args=(speech, message)).start()
            
         cv.imshow("Drive Watch", image)
         if cv.waitKey(1) & 255 == 27:
             break
-        
         
 capture.release()
 cv.destroyAllWindows()
