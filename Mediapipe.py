@@ -98,11 +98,33 @@ def get_aspect_ratio(image, outputs, top_bottom, left_right):
     aspect_ratio = left_right_dis/ top_bottom_dis
     
     return aspect_ratio
+    
 
 def post_image(id_device, image_path):
+    image = cv.imread(image_path)
+    max_width = 300
+    max_height = 300
+    if image is None:
+        print(f"Failed to load image: {image_path}")
+    height, width = image.shape[:2]
+    if width > max_width or height > max_height:
+        scaling_factor = min(max_width / width, max_height / height)
+        new_size = (int(width * scaling_factor), int(height * scaling_factor))
+        resized_image = cv.resize(image, new_size, interpolation=cv.INTER_AREA)
+        cv.imwrite(image_path, resized_image)
+        
+    
     with open(image_path, "rb") as image_file:
         # Converte a imagem para base64
+        #encoded_string = base64.b64encode(image_file.read())
+        #encoded_string = encoded_string.decode('utf-8')
         encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+        #encoded_string = str(base64.b64encode(open(image_path,"rb").read()).decode("ascii"))
+        
+
+        print(encoded_string)
+        
+        
 
     data = {
         "idDevice": id_device,
