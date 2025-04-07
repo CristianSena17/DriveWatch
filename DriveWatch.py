@@ -2,7 +2,7 @@ import mediapipe as mp
 import cv2 as cv
 from scipy.spatial import distance as dis
 import threading
-import pyttsx3
+#import pyttsx3
 import datetime
 import base64
 import requests
@@ -41,10 +41,10 @@ UPPER_LOWER_LIPS = [13, 14]
 LEFT_RIGHT_LIPS = [78, 308]
 
 
-def run_speech(speech, speech_message):
+#def run_speech(speech, speech_message):
     # Função para reproduzir a mensagem de aviso
-    speech.say(speech_message)
-    speech.runAndWait()
+    #speech.say(speech_message)
+    #speech.runAndWait()
     
 
 def draw_landmarks(image, outputs, land_mark, color):
@@ -144,7 +144,7 @@ face_model = face_mesh.FaceMesh(static_image_mode = False,
 capture = cv.VideoCapture(0)
 
 # Inicializa o mecanismo de fala
-speech = pyttsx3.init()
+#speech = pyttsx3.init()
 
 while capture.isOpened():
     # Captura um frame do vídeo
@@ -299,8 +299,8 @@ while capture.isOpened():
 
             if frame_countM > min_frameMouth:
                 # Boca aberta
-                message = 'You look tired, take a break'
-                threading.Thread(target = run_speech, args = (speech, message)).start()
+                #message = 'You look tired, take a break'
+                #threading.Thread(target = run_speech, args = (speech, message)).start()
                 cv.putText(image, "Bocejo", (10, 80),cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
 
             '''
