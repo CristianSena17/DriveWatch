@@ -28,6 +28,9 @@ min_toleranceEyes = 5.3
 min_toleranceMouth = 1.4
 last_capture_time = 0
 capture_interval = 10  # Intervalo de 10 segundos entre os envios para o servidor
+yolo_results = 0
+frame_id = 0
+image = 0
 
 # Inicializa contadores e flag
 frame_count = 0
@@ -75,33 +78,44 @@ except Exception as e:
 
 
 
-def process_yolo(image):
-    """Processa a imagem usando o modelo YOLO e retorna as probabilidades de cada classe"""
-    if yolo_model is None:
-        return {'awake': 100, 'sleeping': 0, 'yawning': 0}
+def process_yolo():
+    if frame_id % 5 == 0:
     
-    results = yolo_model(image)
-    
-    # Valores padrão caso não haja detecção
-    class_probs = {'awake': 100, 'sleeping': 0, 'yawning': 0}
-    
-    # Extrai as classes e probabilidades das detecções
-    if len(results.xyxy[0]) > 0:
-        # Organiza as detecções por confiança (do maior para o menor)
-        detections = results.xyxy[0].cpu().numpy()
+        """Processa a imagem usando o modelo YOLO e retorna as probabilidades de cada classe"""
+        if yolo_model is None:
+            return {'awake': 100, 'sleeping': 0, 'yawning': 0}
         
-        # Para cada detecção, obtém a classe e a confiança
-        for detection in detections:
-            confidence = detection[4] * 100  # Converte para porcentagem
-            class_idx = int(detection[5])
+        results = yolo_model(image)
+        
+        # Valores padrão caso não haja detecção
+        class_probs = {'awake': 100, 'sleeping': 0, 'yawning': 0}
+        
+        # Extrai as classes e probabilidades das detecções
+        if len(results.xyxy[0]) > 0:
+            # Organiza as detecções por confiança (do maior para o menor)
+            detections = results.xyxy[0].cpu().numpy()
             
-            # Mapeia o índice da classe para o nome
-            class_names = {1: 'awake', 0: 'sleeping', 2: 'yawning'}
-            if class_idx in class_names:
-                class_name = class_names[class_idx]
-                class_probs[class_name] = confidence
+            # Para cada detecção, obtém a classe e a confiança
+            for detection in detections:
+                confidence = detection[4] * 100  # Converte para porcentagem
+                class_idx = int(detection[5])
+                
+                # Mapeia o índice da classe para o nome
+                class_names = {1: 'awake', 0: 'sleeping', 2: 'yawning'}
+                if class_idx in class_names:
+                    class_name = class_names[class_idx]
+                    class_probs[class_name] = confidence
 
-    return class_probs
+                    yolo_results = class_probs
+                    
+                    # Informações do YOLO
+                    if yolo_model is not None:
+                        cv.putText(image, f"YOLO Dormindo: {yolo_results['sleeping']:.1f}%", (10, 120), 
+                                    cv.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_WHITE, 2)
+                        cv.putText(image, f"YOLO Bocejando: {yolo_results['yawning']:.1f}%", (10, 150), 
+                                    cv.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_WHITE, 2)
+                    
+                    #drowsiness_result = evaluate_drowsiness(fuzzy_simulator, mediapipe_results, yolo_results)
     
     
 def draw_landmarks(image, outputs, land_mark, color):
@@ -197,11 +211,15 @@ picam2.start()
 # Inicializa o mecanismo de fala
 #speech = pyttsx3.init()
 
+
+
 while True:
     # Captura um frame da picamera
     image = picam2.capture_array()
     if image is None:
         continue  # Se não capturar o frame, pula para a próxima iteração
+    else:   
+        frame_id += 1
 
     # Converte o frame para o espaço de cores RGB
     image_rgb = cv.cvtColor(image, cv.COLOR_BGR2RGB)
@@ -228,16 +246,9 @@ while True:
     # Processa o frame para detectar rostos
     outputs = face_model.process(image)
     
-    yolo_results = process_yolo(image)
-    
-    # Informações do YOLO
-    if yolo_model is not None:
-        cv.putText(image, f"YOLO Dormindo: {yolo_results['sleeping']:.1f}%", (10, 120), 
-                    cv.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_WHITE, 2)
-        cv.putText(image, f"YOLO Bocejando: {yolo_results['yawning']:.1f}%", (10, 150), 
-                    cv.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_WHITE, 2)
-    
-    #drowsiness_result = evaluate_drowsiness(fuzzy_simulator, mediapipe_results, yolo_results)
+    thread = threading.Thread(target=process_yolo)
+    thread.start()
+        
     
     
     
