@@ -10,6 +10,11 @@ import json
 import time
 import numpy as np
 from picamera2 import Picamera2  # Importa a biblioteca para a picamera
+import torch
+import skfuzzy as fuzz
+from skfuzzy import control as ctrl
+import matplotlib.pyplot as plt
+import pathlib
 
 ID_DEVICE = '001'
 
@@ -49,6 +54,55 @@ LEFT_RIGHT_LIPS = [78, 308]
 #def run_speech(speech, speech_message):
 #    speech.say(speech_message)
 #    speech.runAndWait()
+
+
+# YOLOv5
+try:
+    # Substitui temporariamente PosixPath por WindowsPath
+    # temp = pathlib.PosixPath
+    # pathlib.PosixPath = pathlib.WindowsPath
+    
+    yolo_model = torch.hub.load('ultralytics/yolov5', 'custom', path='/home/hmoraesc/DriveWatch/runs/train/exp3/weights/best.pt', force_reload=True)
+
+    model = torch.hub.load('ultralytics/yolov5', 'custom', path='/home/hmoraesc/DriveWatch/runs/train/exp3/weights/best.pt', force_reload=True)
+
+    # Restaura PosixPath para evitar problemas futuros
+    # pathlib.PosixPath = temp
+except Exception as e:
+    print(f"Erro ao carregar o modelo YOLO: {e}")
+    print("Continuando apenas com o método MediaPipe")
+    yolo_model = None
+
+
+
+def process_yolo(image):
+    """Processa a imagem usando o modelo YOLO e retorna as probabilidades de cada classe"""
+    if yolo_model is None:
+        return {'awake': 100, 'sleeping': 0, 'yawning': 0}
+    
+    results = yolo_model(image)
+    
+    # Valores padrão caso não haja detecção
+    class_probs = {'awake': 100, 'sleeping': 0, 'yawning': 0}
+    
+    # Extrai as classes e probabilidades das detecções
+    if len(results.xyxy[0]) > 0:
+        # Organiza as detecções por confiança (do maior para o menor)
+        detections = results.xyxy[0].cpu().numpy()
+        
+        # Para cada detecção, obtém a classe e a confiança
+        for detection in detections:
+            confidence = detection[4] * 100  # Converte para porcentagem
+            class_idx = int(detection[5])
+            
+            # Mapeia o índice da classe para o nome
+            class_names = {1: 'awake', 0: 'sleeping', 2: 'yawning'}
+            if class_idx in class_names:
+                class_name = class_names[class_idx]
+                class_probs[class_name] = confidence
+
+    return class_probs
+    
     
 def draw_landmarks(image, outputs, land_mark, color):
     height, width = image.shape[:2]
@@ -72,6 +126,7 @@ def euclidean_distance(image, top, bottom):
     distance = dis.euclidean(point1, point2)
     return distance
 
+
 def get_aspect_ratio(image, outputs, top_bottom, left_right):
     landmark = outputs.multi_face_landmarks[0]
     
@@ -91,6 +146,7 @@ def get_aspect_ratio(image, outputs, top_bottom, left_right):
     aspect_ratio = left_right_dis / top_bottom_dis
     
     return aspect_ratio
+
 
 def post_image(id_device, image_path):
     image = cv.imread(image_path)
@@ -170,7 +226,20 @@ while True:
     DROWSY_TIME_txt_pos = (10, int(frame_h // 2 * 1.7))
     
     # Processa o frame para detectar rostos
-    outputs = face_model.process(image_rgb)
+    outputs = face_model.process(image)
+    
+    yolo_results = process_yolo(image)
+    
+    # Informações do YOLO
+    if yolo_model is not None:
+        cv.putText(image, f"YOLO Dormindo: {yolo_results['sleeping']:.1f}%", (10, 120), 
+                    cv.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_WHITE, 2)
+        cv.putText(image, f"YOLO Bocejando: {yolo_results['yawning']:.1f}%", (10, 150), 
+                    cv.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_WHITE, 2)
+    
+    #drowsiness_result = evaluate_drowsiness(fuzzy_simulator, mediapipe_results, yolo_results)
+    
+    
     
     if outputs.multi_face_landmarks:  
 		
