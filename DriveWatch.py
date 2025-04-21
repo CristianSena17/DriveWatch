@@ -1,3 +1,4 @@
+
 import mediapipe as mp
 import cv2 as cv
 from scipy.spatial import distance as dis
@@ -31,6 +32,7 @@ capture_interval = 10  # Intervalo de 10 segundos entre os envios para o servido
 yolo_results = 0
 frame_id = 0
 image = 0
+threadYolo = False
 
 # Inicializa contadores e flag
 frame_count = 0
@@ -79,43 +81,44 @@ except Exception as e:
 
 
 def process_yolo():
-    if frame_id % 5 == 0:
-    
-        """Processa a imagem usando o modelo YOLO e retorna as probabilidades de cada classe"""
-        if yolo_model is None:
-            return {'awake': 100, 'sleeping': 0, 'yawning': 0}
+    while True:
+        if frame_id % 2 == 0:
         
-        results = yolo_model(image)
-        
-        # Valores padrão caso não haja detecção
-        class_probs = {'awake': 100, 'sleeping': 0, 'yawning': 0}
-        
-        # Extrai as classes e probabilidades das detecções
-        if len(results.xyxy[0]) > 0:
-            # Organiza as detecções por confiança (do maior para o menor)
-            detections = results.xyxy[0].cpu().numpy()
+            """Processa a imagem usando o modelo YOLO e retorna as probabilidades de cada classe"""
+            if yolo_model is None:
+                return {'awake': 100, 'sleeping': 0, 'yawning': 0}
             
-            # Para cada detecção, obtém a classe e a confiança
-            for detection in detections:
-                confidence = detection[4] * 100  # Converte para porcentagem
-                class_idx = int(detection[5])
+            results = yolo_model(image)
+            
+            # Valores padrão caso não haja detecção
+            class_probs = {'awake': 100, 'sleeping': 0, 'yawning': 0}
+            
+            # Extrai as classes e probabilidades das detecções
+            if len(results.xyxy[0]) > 0:
+                # Organiza as detecções por confiança (do maior para o menor)
+                detections = results.xyxy[0].cpu().numpy()
                 
-                # Mapeia o índice da classe para o nome
-                class_names = {1: 'awake', 0: 'sleeping', 2: 'yawning'}
-                if class_idx in class_names:
-                    class_name = class_names[class_idx]
-                    class_probs[class_name] = confidence
+                # Para cada detecção, obtém a classe e a confiança
+                for detection in detections:
+                    confidence = detection[4] * 100  # Converte para porcentagem
+                    class_idx = int(detection[5])
+                    
+                    # Mapeia o índice da classe para o nome
+                    class_names = {1: 'awake', 0: 'sleeping', 2: 'yawning'}
+                    if class_idx in class_names:
+                        class_name = class_names[class_idx]
+                        class_probs[class_name] = confidence
 
-                    yolo_results = class_probs
-                    
-                    # Informações do YOLO
-                    if yolo_model is not None:
-                        cv.putText(image, f"YOLO Dormindo: {yolo_results['sleeping']:.1f}%", (10, 120), 
-                                    cv.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_WHITE, 2)
-                        cv.putText(image, f"YOLO Bocejando: {yolo_results['yawning']:.1f}%", (10, 150), 
-                                    cv.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_WHITE, 2)
-                    
-                    #drowsiness_result = evaluate_drowsiness(fuzzy_simulator, mediapipe_results, yolo_results)
+                        yolo_results = class_probs
+                        
+                        # Informações do YOLO
+                        if yolo_model is not None:
+                            cv.putText(image, f"YOLO Dormindo: {yolo_results['sleeping']:.1f}%", (10, 120), 
+                                        cv.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_WHITE, 2)
+                            cv.putText(image, f"YOLO Bocejando: {yolo_results['yawning']:.1f}%", (10, 150), 
+                                        cv.FONT_HERSHEY_SIMPLEX, 0.7, COLOR_WHITE, 2)
+                        
+                        #drowsiness_result = evaluate_drowsiness(fuzzy_simulator, mediapipe_results, yolo_results)
     
     
 def draw_landmarks(image, outputs, land_mark, color):
@@ -246,8 +249,10 @@ while True:
     # Processa o frame para detectar rostos
     outputs = face_model.process(image)
     
-    thread = threading.Thread(target=process_yolo)
-    thread.start()
+    if threadYolo == False:
+        thread = threading.Thread(target=process_yolo)
+        thread.start()
+        threadYolo = True
         
     
     
@@ -372,3 +377,4 @@ while True:
         break
 
 cv.destroyAllWindows()
+
