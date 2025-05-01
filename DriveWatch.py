@@ -2,7 +2,6 @@ import mediapipe as mp
 import cv2 as cv
 from scipy.spatial import distance as dis
 import threading
-#import pyttsx3
 import datetime
 import base64
 import requests
@@ -22,9 +21,9 @@ COLOR_WHITE = (255,255,255)
 COLOR_RED = (0, 0, 255)  
 COLOR_GREEN = (0, 255, 0)  
 
-min_frameEyes = 11
-min_frameMouth = 35
-min_toleranceEyes = 5.3
+min_frameEyes = 9
+min_frameMouth = 30
+min_toleranceEyes = 4.8
 min_toleranceMouth = 1.4
 last_capture_time = 0
 capture_interval = 10  # Intervalo de 10 segundos entre os envios para o servidor
@@ -34,9 +33,8 @@ yolo_model = 0
 picam2 = 0
 image = 0
 capture = 0
+vid_capture = 0
 flagImg = False
-#image = 0
-#threadYolo = False
 
 # Inicializa contadores e flag
 frame_count = 0
@@ -60,10 +58,6 @@ RIGHT_EYE_LEFT_RIGHT = [133, 33]
 UPPER_LOWER_LIPS = [13, 14]
 LEFT_RIGHT_LIPS = [78, 308]
 
-#def run_speech(speech, speech_message):
-#    speech.say(speech_message)
-#    speech.runAndWait()
-
 
 def load_yolo(OS):
     global yolo_model
@@ -83,7 +77,6 @@ def load_yolo(OS):
             
     except Exception as e:
         print(f"Erro ao carregar o modelo YOLO: {e}")
-        #print("Continuando apenas com o método MediaPipe")
         yolo_model = None
 
 
@@ -92,13 +85,19 @@ def process_yolo(image):
     """Processa a imagem usando o modelo YOLO e retorna as probabilidades de cada classe"""
     if yolo_model is None:
         return {'awake': 100, 'sleeping': 0, 'yawning': 0}
-    
+        
     results = yolo_model(image)
     
     # Valores padrão caso não haja detecção
     class_probs = {'awake': 100, 'sleeping': 0, 'yawning': 0}
     
+    
     # Extrai as classes e probabilidades das detecções
+    
+    if results is None or len(results.xyxy[0]) == 0:
+        print("Nenhuma detecção encontrada no YOLO.")
+        return class_probs  # Retorna valores padrão se não houver detecção
+        
     if len(results.xyxy[0]) > 0:
         # Organiza as detecções por confiança (do maior para o menor)
         detections = results.xyxy[0].cpu().numpy()
@@ -125,8 +124,6 @@ def process_yolo(image):
                     print(f"YOLO Bocejando: {yolo_results['yawning']:.1f}%")
                                 
                     return yolo_results
-                
-                #drowsiness_result = evaluate_drowsiness(fuzzy_simulator, mediapipe_results, yolo_results)
     
     
 def draw_landmarks(image, outputs, land_mark, color):
@@ -207,12 +204,6 @@ def post_image(id_device, image_path):
     print(f"Response: {response.json()}")
     
 
-# Inicializa o modelo de detecção de rosto
-face_model = face_mesh.FaceMesh(static_image_mode = False,
-                                max_num_faces = 1,
-                                min_detection_confidence = 0.5,
-                                min_tracking_confidence = 0.5)
-
 def init_camera(origem):
     if origem == '1':
         # Inicializa a picamera2
@@ -226,10 +217,23 @@ def init_camera(origem):
     elif origem == '2':
         global capture
         capture = cv.VideoCapture(0) #Em caso de erro mude esse valor
-
-# Inicializa o mecanismo de fala
-#speech = pyttsx3.init()
-
+        
+    elif origem == '3':
+        global image
+        image = cv.imread('/home/hmoraesc/DriveWatch/001_17-04-2025_02-30-03.jpg')
+        
+    else:
+        global vid_capture
+        vid_capture = cv.VideoCapture('/home/hmoraesc/DriveWatch/v3.mp4')
+        global min_toleranceEyes
+        min_toleranceEyes = 3.7
+   
+        
+# Inicializa o modelo de detecção de rosto
+face_model = face_mesh.FaceMesh(static_image_mode = False,
+                                max_num_faces = 1,
+                                min_detection_confidence = 0.5,
+                                min_tracking_confidence = 0.5)
 
 
 
@@ -240,7 +244,7 @@ OS = input()
 
 if OS not in ['1', '2']:
     print("Opção inválida!")
-    sys.exit()
+    exit()
     
 load_yolo(OS)
 
@@ -248,43 +252,42 @@ print("\nSelecione a origem da imagem:")
 print("1 - PiCamera")
 print("2 - Câmera USB")
 print("3 - Caminho de imagem")
+print("4 - Caminho de video")
 origem = input()
 
-if origem not in ['1', '2', '3']:
+if origem not in ['1', '2', '3', '4']:
     print("Opção inválida!")
-    sys.exit()
+    exit()
     
-elif origem == '1' or origem == '2':
-    init_camera(origem)
+init_camera(origem)
 
 
 while True and flagImg == False:
-    #image = None
-
     if origem == '1':
         # Captura um frame da picamera
         image = picam2.capture_array()
         
         if image is None:
             continue  # Se não capturar o frame, pula para a próxima iteração
-        #else:   
-            #frame_id += 1
             
     elif origem == '2':
         if capture.isOpened():
             result, image = capture.read()
-            #if result == False:
-                #print("Erro: Não foi possível carregar a imagem USB.")
-                #continue
             if image is None:
                 continue  # Se não capturar o frame, pula para a próxima iteração
                 
-    else:
-        image = cv.imread('/home/hmoraesc/DriveWatch/001_17-04-2025_02-30-03.jpg')
+    elif origem == '3':
         flagImg = True
         if image is None:
             print("Erro: Não foi possível carregar a imagem.")
             break
+    
+    else:
+        if vid_capture.isOpened():
+            result, image = vid_capture.read()
+            if image is None:
+                continue  # Se não capturar o frame, pula para a próxima iteração
+        
 
     # Converte o frame para o espaço de cores RGB
     image_rgb = cv.cvtColor(image, cv.COLOR_BGR2RGB)
@@ -310,16 +313,9 @@ while True and flagImg == False:
     
     # Processa o frame para detectar rostos
     outputs = face_model.process(image)
-    
-    #if threadYolo == False:
-    #    thread = threading.Thread(target=process_yolo)
-    #    thread.start()
-    #    threadYolo = True
         
     
     if outputs.multi_face_landmarks:  
-		
-		# -------------------------------Inicio blobo direção cabeça-------------------------------
         for face_landmarks in outputs.multi_face_landmarks:
             for idx, lm in enumerate(face_landmarks.landmark):
                 if idx in [33, 263, 1, 61, 291, 199]:
@@ -362,11 +358,9 @@ while True and flagImg == False:
             cv.line(image, p1, p2, (255, 0, 0), 3)
     
             cv.putText(image, text, (20, 50), cv.FONT_HERSHEY_SIMPLEX, 2, (0, 255, 0), 2)
-            cv.putText(image, "x: " + str(np.round(x_angle, 2)), (500, 50), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-            cv.putText(image, "y: " + str(np.round(y_angle, 2)), (500, 100), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-            cv.putText(image, "z: " + str(np.round(z_angle, 2)), (500, 150), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
-    
-		# -------------------------------Fim blobo direção cabeça-------------------------------
+            #cv.putText(image, "x: " + str(np.round(x_angle, 2)), (500, 50), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            #cv.putText(image, "y: " + str(np.round(y_angle, 2)), (500, 100), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            #cv.putText(image, "z: " + str(np.round(z_angle, 2)), (500, 150), cv.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
     
         # Desenha e calcula a relação de aspecto para os olhos e lábios
         draw_landmarks(image, outputs, LEFT_EYE_TOP_BOTTOM, COLOR_GREEN)
@@ -400,8 +394,7 @@ while True and flagImg == False:
             
         if frame_count > min_frameEyes and (current_time - last_capture_time) > capture_interval and flagBocejo == 0:
             if process_yolo(clean_image)['sleeping'] >= 50:
-                # Olhos fechados
-                message = 'You are sleeping, stop the vehicle'
+                # Dormindo
                 cv.putText(image, "DROWSINESS ALERT!", (10, 50), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
                 
                 # Salva a imagem capturada
@@ -411,11 +404,11 @@ while True and flagImg == False:
                 # Atualiza o tempo da última captura
                 last_capture_time = current_time
                 
-                # Cria uma nova thread para enviar a imagem
                 threading.Thread(target=post_image, args=(ID_DEVICE, image_path)).start()
-                # Cria uma nova thread para reproduzir a mensagem de aviso
-                # threading.Thread(target=run_speech, args=(speech, message)).start()
                 print("Dormindo")
+            
+                    
+                    
     
 		# Calcula se a boca está aberta
         ratio_lips = get_aspect_ratio(image, outputs, UPPER_LOWER_LIPS, LEFT_RIGHT_LIPS)
@@ -435,9 +428,7 @@ while True and flagImg == False:
     
         if frame_countM > min_frameMouth:
             if process_yolo(clean_image)['yawning'] >= 50:
-                # Boca aberta
-                #message = 'You look tired, take a break'
-                #threading.Thread(target=run_speech, args=(speech, message)).start()
+                # Bocejando
                 cv.putText(image, "Bocejo", (10, 80), cv.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
                 print("Bocejando")
     
